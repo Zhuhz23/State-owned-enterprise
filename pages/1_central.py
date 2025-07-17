@@ -4,6 +4,11 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+ 
+
+st.set_page_config(layout="wide")
+    
+
 def check_password():
     """如果用户已登录，返回 True，否则显示密码输入并返回 False"""
     
@@ -35,10 +40,6 @@ def check_password():
 
 
 if check_password():
-   
-    
-    st.set_page_config(layout="wide")
-        
     
     @st.cache_data
     def load_data(sheet_name):
@@ -77,157 +78,133 @@ if check_password():
     if df_central.empty:
         st.stop()
     
-    st.header("一、优化国有经济布局结构，加快建设现代化产业体系")
-    with st.container(border=True):
-        st.write("此处未来用于放置相关图表和分析...")
+    st.header("中央企业指标分析仪表盘")
     
-    st.header("二、完善国有企业科技创新机制，加快实现高水平自立自强")
-    with st.container(border=True):
-        # --- 1. 按章节筛选数据 ---
-        chapter_name = "三、完善国有企业科技创新机制加快实现高水平自立自强"
-        df_chapter = df_central[df_central['所属章节'] == chapter_name].copy()  
-        # 如果该章节无数据，则提示
-        if df_chapter.empty:
-            st.warning(f"数据文件中未找到章节 '{chapter_name}' 的相关数据。")
-            st.stop()
     
-        # --- 2. 创建包含序号的指标显示名称 ---
-        df_chapter['指标显示名称'] = df_chapter['指标名称'] + ' --- ' + df_chapter['指标序号'].astype(str)
+    
+    # --- 1. 全局指标筛选器 ---
+    with st.container(border=True):
         st.subheader("分析指标选择")
-        # --- 3. 实现关键词搜索和指标选择 ---
-        indicator_display_options = sorted(df_chapter['指标显示名称'].unique())
-        # 关键词搜索框
-        search_term = st.text_input("指标关键词搜索：", placeholder="输入关键词筛选下方列表")
-        # 根据搜索词筛选选项
+        
+        # 在整个数据集上创建显示名称
+        df_central['指标显示名称'] = df_central['指标名称'] + ' --- ' + df_central['指标序号'].astype(str)
+        indicator_display_options = sorted(df_central['指标显示名称'].unique())
+        
+        search_term = st.text_input("指标关键词搜索：", placeholder="先输入关键词搜索，再筛选下方列表")
+        
         if search_term:
             filtered_options = [opt for opt in indicator_display_options if search_term.lower() in opt.lower()]
-            # 在搜索模式下，默认选中第一个匹配项
             index_to_use = 0
         else:
-            # 在非搜索模式下，使用完整的列表，并设置您指定的默认值
             filtered_options = indicator_display_options
             default_indicator = "截至本填报期末，本企业研发人员占比（%），指标68/指标4 --- 3(68/4)"
             try:
                 index_to_use = filtered_options.index(default_indicator)
             except ValueError:
-                # 如果默认指标在数据中不存在，安全地回退到第一个
                 index_to_use = 0
+                
         selected_display_name = st.selectbox(
             "请从筛选结果中选择您需要分析的指标：",
             options=filtered_options,
             index=index_to_use,
             label_visibility="collapsed"
         )
-        if not selected_display_name:
-            st.warning("根据您的搜索，未找到匹配的指标。请调整关键词或清空搜索框。")
-            st.stop()
-        original_indicator = selected_display_name.split(' --- ')[0]
-        
-        # --- 新增：获取当前指标的单位 ---
-        # 筛选出当前指标的所有行，并获取第一个非空的“单位”值
-        unit_series = df_chapter[df_chapter['指标名称'] == original_indicator]['单位'].dropna()
-        unit = unit_series.iloc[0] if not unit_series.empty else ''
-        axis_title = f"数值 ({unit})" if unit else "数值" # 如果单位为空，则不显示括号
-        
-        
-        st.markdown(f"#### 当前分析指标：**{selected_display_name}**")
-        st.write("---")
     
-        left_col, right_col = st.columns(2, gap="large")
-        year_options = sorted(df_chapter['年份'].unique(), reverse=True)
-        quarter_options = sorted(df_chapter['季度'].unique())
+    if not selected_display_name:
+        st.warning("请选择一个指标以开始分析。")
+        st.stop()
         
-        with left_col:
-            st.subheader("面板数据：Top 10 企业排序")     
-            filter_col1, filter_col2 = st.columns(2)
-            with filter_col1:
-                panel_year = st.selectbox("选择年份", options=year_options, key="panel_year")
-            with filter_col2:
-                panel_quarter = st.selectbox("选择季度", options=quarter_options, key="panel_quarter")
+              
+    # --- 2. 根据所选指标，准备数据和后续筛选器 ---
+    original_indicator = selected_display_name.split(' --- ')[0]
+    df_indicator_data = df_central[df_central['指标名称'] == original_indicator].copy()
+    
+    selected_chapter = df_indicator_data['所属章节'].iloc[0] if not df_indicator_data.empty else "未知章节"
+    unit_series = df_indicator_data['单位'].dropna()
+    unit = unit_series.iloc[0] if not unit_series.empty else ''
+    axis_title = f"数值 ({unit})" if unit else "数值"
+    
+    
+    # --- 3. 全局时间筛选器 ---
+    with st.container(border=True):
+        st.subheader("时间范围筛选")
+        left_filter_col, right_filter_col = st.columns(2)
+    
+        # 准备时间选项
+        year_options = sorted(df_indicator_data['年份'].unique(), reverse=True)
+        quarter_options = sorted(df_indicator_data['季度'].unique())
         
-        # --- 修正：将 panel_data 和 top_10_companies 的定义移到列布局之外 ---
-        panel_data = df_chapter[
-            (df_chapter['指标名称'] == original_indicator) &
-            (df_chapter['年份'] == panel_year) &
-            (df_chapter['季度'] == panel_quarter)
-        ].nlargest(10, '数值').sort_values('数值', ascending=True)
-        
-        # --- 新增：为Top 10企业创建颜色映射 ---
+        with left_filter_col:
+            st.markdown("**面板数据时间点**")
+            panel_year = st.selectbox("选择年份", options=year_options, key="panel_year")
+            panel_quarter = st.selectbox("选择季度", options=quarter_options, key="panel_quarter")
+    
+        with right_filter_col:
+            st.markdown("**时间序列范围**")
+            range_col1, range_col2 = st.columns(2)
+            with range_col1:
+                start_year = st.selectbox("起始年份", options=year_options, index=len(year_options)-1, key="start_year")
+                start_quarter = st.selectbox("起始季度", options=quarter_options, index=0, key="start_quarter")
+            with range_col2:
+                end_year = st.selectbox("终止年份", options=year_options, index=0, key="end_year")
+                # --- 核心修正：index不再写死 ---
+                end_quarter_index = len(quarter_options) - 1
+                end_quarter = st.selectbox("终止季度", options=quarter_options, index=end_quarter_index, key="end_quarter")
+    
+     
+    
+    
+    # --- 4. 仪表盘展示 ---
+    with st.container(border=True):
+        # 准备数据
+        panel_data = df_indicator_data[
+            (df_indicator_data['年份'] == panel_year) &
+            (df_indicator_data['季度'] == panel_quarter)
+        ].nlargest(10, '数值')
+    
         top_10_companies = panel_data['企业名称'].tolist()
         color_sequence = px.colors.qualitative.Plotly
         color_map = {company: color_sequence[i % len(color_sequence)] for i, company in enumerate(top_10_companies)}
     
+        time_series_filtered_df = get_filtered_data(df_indicator_data, original_indicator, start_year, start_quarter, end_year, end_quarter)
+        time_series_data = time_series_filtered_df[time_series_filtered_df['企业名称'].isin(top_10_companies)].copy()
+        if not time_series_data.empty:
+            time_series_data.sort_values(by=['年份', '季度'], inplace=True)
+            time_series_data['时间'] = time_series_data['年份'].astype(str) + '-Q' + time_series_data['季度'].astype(str)
+    
+        
+        st.markdown(f"#### 所属章节：**{selected_chapter}**")
+        st.markdown(f"#### 当前分析指标：**{selected_display_name}**")
+    
+        # 创建仪表盘
+        left_col, right_col = st.columns(2, gap="large")
     
         with left_col:
-    
-            fig_bar = px.bar(
-                panel_data,
-                x='数值',
-                y='企业名称',
-                orientation='h',
-                title=f'{panel_year}年Q{panel_quarter} - Top 10',
-                text='数值',
-                color='企业名称',              # <-- 新增：指定按企业名称分配颜色
-                color_discrete_map=color_map   # <-- 新增：应用颜色映射
-            )
-            # --- 修改：使用动态坐标轴标题 ---
-            fig_bar.update_layout(
-                yaxis_title="企业名称", 
-                xaxis_title=axis_title,
-                showlegend=False # 条形图通常不需要图例
-            )
-            fig_bar.update_yaxes(categoryorder='total ascending')
-            fig_bar.update_traces(texttemplate='%{text:.1f}', textposition='outside') # 单位已在标题中，此处只显示数值
-            fig_bar.update_traces(hovertemplate='<b>%{y}</b><br>数值: %{x:.1f}<extra></extra>')
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.subheader("面板数据：Top 10 企业排序")
+            if panel_data.empty:
+                st.warning("当前筛选条件下无数据。")
+            else:
+                fig_bar = px.bar(
+                    panel_data, x='数值', y='企业名称', orientation='h',
+                    title=f'{panel_year}年Q{panel_quarter} - Top 10', text='数值',
+                    color='企业名称', color_discrete_map=color_map
+                )
+                fig_bar.update_layout(yaxis_title="企业名称", xaxis_title=axis_title, showlegend=False)
+                fig_bar.update_yaxes(categoryorder='total ascending')
+                fig_bar.update_traces(texttemplate='%{text:.1f}', textposition='outside')
+                fig_bar.update_traces(hovertemplate='<b>%{y}</b><br>数值: %{x:.1f}<extra></extra>')
+                st.plotly_chart(fig_bar, use_container_width=True)
     
         with right_col:
             st.subheader("时间序列数据：Top 10 企业趋势")
-            
-            range_col1, range_col2, range_col3, range_col4 = st.columns(4)
-            
-            default_start_year = 2024
-            default_start_q = 4
-            default_end_year = 2025
-            default_end_q = 1
-    
-            start_year_idx = year_options.index(default_start_year) if default_start_year in year_options else 0
-            start_q_idx = quarter_options.index(default_start_q) if default_start_q in quarter_options else 0
-            end_year_idx = year_options.index(default_end_year) if default_end_year in year_options else 0
-            end_q_idx = quarter_options.index(default_end_q) if default_end_q in quarter_options else 0
-    
-            with range_col1:
-                start_year = st.selectbox("起始年份", options=year_options, index=start_year_idx, key="start_year")
-            with range_col2:
-                start_quarter = st.selectbox("起始季度", options=quarter_options, index=start_q_idx, key="start_quarter")
-            with range_col3:
-                end_year = st.selectbox("终止年份", options=year_options, index=end_year_idx, key="end_year")
-            with range_col4:
-                end_quarter = st.selectbox("终止季度", options=quarter_options, index=end_q_idx, key="end_quarter")
-    
-            time_series_filtered_df = get_filtered_data(df_chapter, original_indicator, start_year, start_quarter, end_year, end_quarter)
-            
-            time_series_data = time_series_filtered_df[time_series_filtered_df['企业名称'].isin(top_10_companies)].copy()
-            
-            # --- 4. 新增：在绘图前按时间排序数据 ---
-            time_series_data.sort_values(by=['年份', '季度'], inplace=True)
-            
-            time_series_data['时间'] = time_series_data['年份'].astype(str) + '-Q' + time_series_data['季度'].astype(str)
-            
-            fig_line = px.line(
-                time_series_data,
-                x='时间',
-                y='数值',
-                color='企业名称',
-                markers=True,
-                title=f'Top 10 企业趋势 ({start_year}Q{start_quarter} - {end_year}Q{end_quarter})',
-                color_discrete_map=color_map # <-- 新增：应用颜色映射
-            )
-            # --- 修改：使用动态坐标轴标题 ---
-            fig_line.update_layout(xaxis_title="时间", yaxis_title=axis_title, legend_title="企业名称")
-            fig_line.update_traces(hovertemplate='时间: %{x}<br>数值: %{y:.1f}<extra></extra>')
-            st.plotly_chart(fig_line, use_container_width=True)
-    
-    st.header("九、组织保障")
-    with st.container(border=True):
-        st.write("此处未来用于放置相关图表和分析...")
+            if time_series_data.empty:
+                st.warning("在选定时间范围内，Top 10 企业无数据。")
+            else:
+                fig_line = px.line(
+                    time_series_data, x='时间', y='数值', color='企业名称', markers=True,
+                    title=f'Top 10 企业趋势 ({start_year}Q{start_quarter} - {end_year}Q{end_quarter})',
+                    color_discrete_map=color_map
+                )
+                fig_line.update_layout(xaxis_title="时间", yaxis_title=axis_title, legend_title="企业名称")
+                fig_line.update_traces(hovertemplate='时间: %{x}<br>数值: %{y:.1f}<extra></extra>')
+                st.plotly_chart(fig_line, use_container_width=True)
